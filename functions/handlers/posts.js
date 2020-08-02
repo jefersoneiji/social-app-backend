@@ -14,7 +14,8 @@ exports.getAllPosts = (request, response) => {
                     userHandle: doc.data().userHandle,
                     createdAt: doc.data().createdAt,
                     commentCount: doc.data().commentCount,
-                    likeCount: doc.data().likeCount
+                    likeCount: doc.data().likeCount,
+                    userImage: doc.data().userImage
                 });
             });
             return response.json(posts);
@@ -113,7 +114,7 @@ exports.deletePost = (request, response) => {
         });
 };
 exports.commentPost = (request, response) => {
-    if (request.body.body.trim() === '') return response.status(400).json({ error: 'Must not be empty' });
+    if (request.body.body.trim() === '') return response.status(400).json({ comment: 'Must not be empty' });
 
     const newComment = {
         body: request.body.body,

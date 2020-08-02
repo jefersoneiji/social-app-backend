@@ -10,6 +10,7 @@ const {
     validateLoginData,
     reduceUserDetails
 } = require('../util/validators');
+const { get } = require('http');
 
 exports.signup = (request, response) => {
 
@@ -61,7 +62,7 @@ exports.signup = (request, response) => {
             if (err.code === 'auth/email-already-in-use') {
                 return response.status(400).json({ email: 'Email already in use' });
             } else {
-                return response.status(500).json({ error: err.code });
+                return response.status(500).json({ general: 'Something went wrong, please try again' });
             }
         });
 };
@@ -86,9 +87,46 @@ exports.login = (request, response) => {
         })
         .catch((err) => {
             console.error(err);
-            if (err.code === 'auth/wrong-password') {
-                return response.status(403).json({ general: 'wrong credentials, please try again' });
-            } else return response.status(500).json({ error: err.code });
+            return response.status(403).json({ general: 'wrong credentials, please try again' });
+        });
+
+};
+
+exports.getUserDetails = (request, response) => {
+    let userData = {};
+    db
+        .doc(`/users/${request.params.handle}`)
+        .get()
+        .then((doc) => {
+            if (doc.exists) {
+                userData.user = doc.data();
+                return db
+                    .collection('posts')
+                    .where('userHandle', '==', request.params.handle)
+                    .orderBy('createdAt', 'desc')
+                    .get();
+            } else {
+                return response.status(404).json({ error: 'User not found' });
+            }
+        })
+        .then((data) => {
+            userData.posts = [];
+            data.forEach((doc) => {
+                userData.posts.push({
+                    body: doc.data().body,
+                    createdAt: doc.data().createdAt,
+                    userHandle: doc.data().userHandle,
+                    userImage: doc.data().userImage,
+                    likeCount: doc.data().likeCount,
+                    commentCount: doc.data().commentCount,
+                    postId: doc.id
+                });
+            });
+            return response.json(userData);
+        })
+        .catch((err) => {
+            console.error(err);
+            return response.status(500).json({ error: err.code });
         });
 
 };
@@ -126,14 +164,52 @@ exports.getAuthenticatedUser = (request, response) => {
             data.forEach((doc) => {
                 userData.likes.push(doc.data());
             });
+            return db
+                .collection('notifications')
+                .where('recipient', '==', request.user.handle)
+                .orderBy('createdAt', 'desc')
+                .limit(10)
+                .get();
+        })
+        .then((data) => {
+            userData.notifications = [];
+            data.forEach((doc) => {
+                userData.notifications.push({
+                    recipient: doc.data().recipient,
+                    sender: doc.data().sender,
+                    createdAt: doc.data().createdAt,
+                    postId: doc.data().postId,
+                    type: doc.data().type,
+                    read: doc.data().read,
+                    notificationId: doc.id
+                });
+            });
             return response.json(userData);
         })
-        .catch((err)=> {
+        .catch((err) => {
             console.error(err);
             return response.status(500).json({ error: err.code });
         });
 
 };
+
+exports.markNotificationRead = (request, response) => {
+    let batch = db.batch();
+    request.body.forEach((notificationId) => {
+        const notification = db.doc(`/notifications/${notificationId}`);
+        batch.update(notification, { read: true });
+    });
+    batch
+        .commit()
+        .then(() => {
+            return response.json({ message: 'Notifications marked read' });
+        })
+        .catch((err) => {
+            console.error(err);
+            return response.status(500).json({ error: err.code });
+        });
+};
+
 
 exports.uploadImage = (request, response) => {
     const BusBoy = require('busboy');
